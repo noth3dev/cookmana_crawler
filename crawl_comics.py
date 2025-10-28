@@ -14,6 +14,7 @@ import requests
 import subprocess
 import platform
 import re
+import mimetypes
 from concurrent.futures import ThreadPoolExecutor
 
 def sanitize_path_component(value):
@@ -207,10 +208,20 @@ def crawl_comic_images():
         sanitized_comic_title = sanitize_path_component(comic_title)
         base_dir_name = f"{sanitized_comic_title} by {sanitized_author}" if sanitized_author != "Unknown" else sanitized_comic_title
         base_dir = base_dir_name
-        if os.path.exists(base_dir):
-            shutil.rmtree(base_dir, ignore_errors=True)
+        existing_episode_dirs = []
+        for info in episode_info_list:
+            episode_dir = os.path.join(base_dir, info['sanitized_episode'])
+            if os.path.isdir(episode_dir):
+                existing_episode_dirs.append(episode_dir)
+        for episode_dir in existing_episode_dirs[-3:]:
+            shutil.rmtree(episode_dir, ignore_errors=True)
         os.makedirs(base_dir, exist_ok=True)
-        processed_dirs = set()
+        episodes_to_process = []
+        for info in episode_info_list:
+            episode_dir = os.path.join(base_dir, info['sanitized_episode'])
+            if os.path.isdir(episode_dir) and os.listdir(episode_dir):
+                continue
+            episodes_to_process.append(info)
         
         def process_episode(info):
             driver = create_driver()
@@ -255,22 +266,34 @@ def crawl_comic_images():
                             parsed_url = urlparse(img_url)
                             path = parsed_url.path
                             ext = os.path.splitext(path)[1].lower()
-                            if ext in ['.jpg', '.jpeg']:
-                                try:
-                                    headers = {
-                                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                                    }
-                                    img_response = requests.get(img_url, headers=headers, timeout=30)
-                                    img_response.raise_for_status()
-                                    img_filename = f"img_{img_count:04d}.jpg"
-                                    img_path = os.path.join(episode_dir, img_filename)
-                                    with open(img_path, 'wb') as f:
-                                        f.write(img_response.content)
-                                    img_count += 1
-                                    print(f"  저장: {img_filename}")
-                                    time.sleep(0.5)
-                                except Exception as e:
-                                    print(f"  이미지 다운로드 실패: {img_url} - {str(e)}")
+                            allowed_extensions = {'.jpg', '.jpeg', '.jpe', '.png', '.gif', '.bmp', '.webp', '.avif'}
+                            if ext not in allowed_extensions:
+                                ext = ''
+                            try:
+                                headers = {
+                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                                }
+                                img_response = requests.get(img_url, headers=headers, timeout=30)
+                                img_response.raise_for_status()
+                                if not ext:
+                                    content_type = img_response.headers.get('Content-Type', '')
+                                    if content_type.startswith('image/'):
+                                        guessed_ext = mimetypes.guess_extension(content_type.split(';')[0].strip())
+                                        if guessed_ext:
+                                            if guessed_ext == '.jpe':
+                                                guessed_ext = '.jpg'
+                                            ext = guessed_ext
+                                if not ext or ext not in allowed_extensions:
+                                    ext = '.jpg'
+                                img_filename = f"img_{img_count:04d}{ext}"
+                                img_path = os.path.join(episode_dir, img_filename)
+                                with open(img_path, 'wb') as f:
+                                    f.write(img_response.content)
+                                img_count += 1
+                                print(f"  저장: {img_filename}")
+                                time.sleep(0.5)
+                            except Exception as e:
+                                print(f"  이미지 다운로드 실패: {img_url} - {str(e)}")
                     except Exception as e:
                         print(f"  이미지 요소 처리 중 에러: {str(e)}")
                         continue
@@ -281,7 +304,7 @@ def crawl_comic_images():
                 driver.quit()
                 time.sleep(1)
         
-        for batch in batched(episode_info_list, 3):
+        for batch in batched(episodes_to_process, 3):
             with ThreadPoolExecutor(max_workers=len(batch)) as executor:
                 futures = [executor.submit(process_episode, info) for info in batch]
                 for future in futures:
