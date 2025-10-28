@@ -16,6 +16,13 @@ import platform
 import re
 from concurrent.futures import ThreadPoolExecutor
 
+def sanitize_path_component(value):
+    if not value:
+        return "Unknown"
+    sanitized = re.sub(r'[<>:"/\\|?*]', '_', value)
+    sanitized = sanitized.strip().strip('.')
+    return sanitized or "Unknown"
+
 def crawl_comic_images():
     os.environ['WDM_LOG_LEVEL'] = '0'
     os.environ['WDM_PRINT_FIRST_LINE'] = 'False'
@@ -188,23 +195,28 @@ def crawl_comic_images():
         driver.quit()
     
     episode_info_list.sort(key=lambda item: episode_sort_key(item['episode_num']))
+    for info in episode_info_list:
+        info['sanitized_episode'] = sanitize_path_component(info['episode_num'])
     
     if not episode_info_list:
         print("에피소드 정보를 가져올 수 없습니다.")
         return
     
-    base_dir = os.path.join(author_name, comic_title)
+    sanitized_author = sanitize_path_component(author_name)
+    sanitized_comic_title = sanitize_path_component(comic_title)
+    base_dir = os.path.join(sanitized_author, sanitized_comic_title)
     os.makedirs(base_dir, exist_ok=True)
     existing_dirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-    episode_names = [info['episode_num'] for info in episode_info_list]
+    episode_map = {info['sanitized_episode']: info for info in episode_info_list}
+    episode_names = set(episode_map.keys())
     existing_in_episode = [d for d in existing_dirs if d in episode_names]
-    existing_in_episode.sort(key=episode_sort_key)
+    existing_in_episode.sort(key=lambda name: episode_sort_key(episode_map[name]['episode_num']))
     if existing_in_episode:
         delete_count = min(3, len(existing_in_episode))
         for dir_name in existing_in_episode[-delete_count:]:
             shutil.rmtree(os.path.join(base_dir, dir_name), ignore_errors=True)
     processed_dirs = {d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))}
-    episode_info_list = [info for info in episode_info_list if info['episode_num'] not in processed_dirs]
+    episode_info_list = [info for info in episode_info_list if info['sanitized_episode'] not in processed_dirs]
     if not episode_info_list:
         print("처리할 에피소드가 없습니다.")
         return
@@ -215,7 +227,7 @@ def crawl_comic_images():
         local_comic_title = info['comic_title']
         episode_num = info['episode_num']
         print(f"\n{local_comic_title} {episode_num} 처리 중: {link}")
-        episode_dir = os.path.join(base_dir, episode_num)
+        episode_dir = os.path.join(base_dir, info['sanitized_episode'])
         os.makedirs(episode_dir, exist_ok=True)
         try:
             driver.get(link)
