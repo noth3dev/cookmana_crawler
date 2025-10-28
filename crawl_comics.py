@@ -53,7 +53,7 @@ def crawl_comic_images():
             service.creation_flags = subprocess.CREATE_NO_WINDOW
         return webdriver.Chrome(service=service, options=chrome_options)
 
-    print("\nChrome 브라우저를 시작합니다...")
+    print("\nChrome 시작")
     try:
         driver = create_driver()
         print("Chrome 브라우저가 성공적으로 시작되었습니다.")
