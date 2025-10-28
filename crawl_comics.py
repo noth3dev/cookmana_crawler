@@ -16,9 +16,9 @@ import platform
 import re
 import mimetypes
 from concurrent.futures import ThreadPoolExecutor
-from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QProgressBar, QTextEdit, QMessageBox, QFrame, QSizePolicy
-from PyQt5.QtCore import QThread, pyqtSignal, Qt
-from PyQt5.QtGui import QFont, QPalette, QColor, QIcon
+from PyQt5.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QProgressBar, QTextEdit, QMessageBox
+from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtGui import QFont
 
 def sanitize_path_component(value):
     if not value:
@@ -352,7 +352,7 @@ class CrawlerThread(QThread):
                 except Exception as e:
                     self.log_signal.emit(f"Failed to remove existing ZIP {zip_target}: {str(e)}")
             try:
-                shutil.make_archive(zip_base, 'zip', base_dir_path)
+                shutil.make_archive(zip_base, 'zip', os.path.dirname(base_dir_path), os.path.basename(base_dir_path))
                 self.log_signal.emit(f"Created ZIP: {zip_target}")
             except Exception as e:
                 self.log_signal.emit(f"Failed to create ZIP: {str(e)}")
@@ -370,106 +370,53 @@ class ComicCrawlerGUI(QMainWindow):
         super().__init__()
         self.setWindowTitle("Comic Crawler")
         self.resize(800, 600)
-        self.setMinimumSize(600, 400)
 
         central = QWidget()
         self.setCentralWidget(central)
-        main_layout = QVBoxLayout(central)
-        main_layout.setContentsMargins(20, 20, 20, 20)
-        main_layout.setSpacing(20)
+        layout = QVBoxLayout(central)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(15)
 
-        # Header Frame
-        header_frame = QFrame()
-        header_frame.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Minimum)
-        header_layout = QVBoxLayout(header_frame)
-        header_layout.setContentsMargins(0, 0, 0, 0)
-        header_layout.setSpacing(5)
-
-        app_title = QLabel("Comic Crawler")
-        app_title.setFont(QFont("Segoe UI", 18, QFont.Bold))
-        app_title.setAlignment(Qt.AlignCenter)
-        header_layout.addWidget(app_title)
-
-        self.title_label = QLabel("Enter URL to start")
-        self.title_label.setFont(QFont("Segoe UI", 14, QFont.Normal))
+        # Comic Title Label
+        self.title_label = QLabel("Comic Title")
+        self.title_label.setFont(QFont("Segoe UI", 16, QFont.Bold))
         self.title_label.setAlignment(Qt.AlignCenter)
-        self.title_label.setWordWrap(True)
-        header_layout.addWidget(self.title_label)
+        layout.addWidget(self.title_label)
 
-        main_layout.addWidget(header_frame)
-
-        # Input Frame
-        input_frame = QFrame()
-        input_layout = QHBoxLayout(input_frame)
-        input_layout.setContentsMargins(0, 0, 0, 0)
-        input_layout.setSpacing(10)
-
-        url_label = QLabel("URL:")
-        url_label.setFixedWidth(40)
+        # URL Input
+        url_layout = QHBoxLayout()
+        url_label = QLabel("Comic Main Page URL:")
         self.url_edit = QLineEdit()
-        self.url_edit.setPlaceholderText("Enter comic main page URL...")
-        input_layout.addWidget(url_label)
-        input_layout.addWidget(self.url_edit)
+        url_layout.addWidget(url_label)
+        url_layout.addWidget(self.url_edit)
+        layout.addLayout(url_layout)
 
-        main_layout.addWidget(input_frame)
-
-        # Buttons Frame
-        buttons_frame = QFrame()
-        buttons_layout = QHBoxLayout(buttons_frame)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
-        buttons_layout.setSpacing(10)
-
-        self.start_btn = QPushButton("Start")
-        self.start_btn.setIcon(QIcon.fromTheme("media-playback-start"))  # Assuming theme icons available
+        # Buttons
+        btn_layout = QHBoxLayout()
+        self.start_btn = QPushButton("Start Crawling")
         self.start_btn.clicked.connect(self.start_crawling)
-        self.start_btn.setToolTip("Start crawling the comic")
-
         self.stop_btn = QPushButton("Stop")
-        self.stop_btn.setIcon(QIcon.fromTheme("media-playback-stop"))
         self.stop_btn.clicked.connect(self.stop_crawling)
         self.stop_btn.setEnabled(False)
-        self.stop_btn.setToolTip("Stop the crawling process")
+        btn_layout.addWidget(self.start_btn)
+        btn_layout.addWidget(self.stop_btn)
+        btn_layout.addStretch()
+        layout.addLayout(btn_layout)
 
-        buttons_layout.addWidget(self.start_btn)
-        buttons_layout.addWidget(self.stop_btn)
-        buttons_layout.addStretch()
-
-        main_layout.addWidget(buttons_frame)
-
-        # Progress Frame
-        progress_frame = QFrame()
-        progress_layout = QVBoxLayout(progress_frame)
-        progress_layout.setContentsMargins(0, 0, 0, 0)
-        progress_layout.setSpacing(5)
-
-        overall_label = QLabel("Progress:")
-        progress_layout.addWidget(overall_label)
-
+        # Progress Bars
+        overall_label = QLabel("Overall Progress:")
+        layout.addWidget(overall_label)
         self.overall_progress = QProgressBar()
         self.overall_progress.setRange(0, 100)
         self.overall_progress.setTextVisible(True)
-        self.overall_progress.setFixedHeight(25)
-        self.overall_progress.setFormat("%p% (%v/%m)")
-        progress_layout.addWidget(self.overall_progress)
+        self.overall_progress.setFixedHeight(20)
+        layout.addWidget(self.overall_progress)
 
-        main_layout.addWidget(progress_frame)
-
-        # Log Frame
-        log_frame = QFrame()
-        log_layout = QVBoxLayout(log_frame)
-        log_layout.setContentsMargins(0, 0, 0, 0)
-        log_layout.setSpacing(5)
-
-        log_label = QLabel("Log:")
-        log_layout.addWidget(log_label)
-
+        # Log Area
         self.log_text = QTextEdit()
         self.log_text.setReadOnly(True)
         self.log_text.setFont(QFont("Consolas", 10))
-        self.log_text.setLineWrapMode(QTextEdit.NoWrap)
-        log_layout.addWidget(self.log_text)
-
-        main_layout.addWidget(log_frame, stretch=1)
+        layout.addWidget(self.log_text)
 
     def start_crawling(self):
         url = self.url_edit.text().strip()
@@ -480,7 +427,7 @@ class ComicCrawlerGUI(QMainWindow):
         self.stop_btn.setEnabled(True)
         self.log_text.clear()
         self.overall_progress.setValue(0)
-        self.title_label.setText("Loading...")
+        self.title_label.setText("Comic Title")
         self.thread = CrawlerThread(url, self)
         self.thread.log_signal.connect(self.log)
         self.thread.progress_signal.connect(self.update_progress)
@@ -498,8 +445,9 @@ class ComicCrawlerGUI(QMainWindow):
         self.log_text.ensureCursorVisible()
 
     def update_progress(self, completed, total):
-        self.overall_progress.setMaximum(total)
-        self.overall_progress.setValue(completed)
+        if total > 0:
+            percent = int((completed / total) * 100)
+            self.overall_progress.setValue(percent)
 
     def set_title(self, title):
         self.title_label.setText(title)
@@ -513,67 +461,53 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setStyleSheet("""
         QWidget {
-            background-color: #f0f4f8;
-            color: #333333;
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 13px;
-        }
-        QMainWindow {
-            background-color: #ffffff;
-        }
-        QLabel {
-            color: #333333;
-        }
-        QLineEdit {
-            background-color: #ffffff;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            padding: 8px 12px;
-            selection-background-color: #3b82f6;
-            color: #333333;
-        }
-        QLineEdit:focus {
-            border: 1px solid #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-family: Segoe UI;
+            font-size: 12pt;
         }
         QPushButton {
-            background-color: #3b82f6;
-            color: #ffffff;
+            background-color: #333333;
             border: none;
-            border-radius: 6px;
-            padding: 10px 16px;
-            font-weight: 600;
+            border-radius: 5px;
+            padding: 10px;
+            font-weight: bold;
         }
         QPushButton:hover {
-            background-color: #2563eb;
+            background-color: #444444;
         }
         QPushButton:disabled {
-            background-color: #9ca3af;
-            color: #d1d5db;
+            background-color: #2a2a2a;
+            color: #888888;
+        }
+        QLineEdit {
+            background-color: #2a2a2a;
+            border: none;
+            border-radius: 5px;
+            padding: 8px;
         }
         QProgressBar {
-            background-color: #e5e7eb;
-            border-radius: 6px;
+            background-color: #2a2a2a;
+            border-radius: 10px;
             text-align: center;
-            color: #333333;
-            height: 25px;
-            border: 1px solid #d1d5db;
+            color: #ffffff;
+            height: 20px;
         }
         QProgressBar::chunk {
-            background-color: #3b82f6;
-            border-radius: 6px;
+            background-color: #4a4a4a;
+            border-radius: 10px;
         }
         QTextEdit {
-            background-color: #f9fafb;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            padding: 8px;
-            color: #333333;
+            background-color: #2a2a2a;
+            border: none;
+            border-radius: 5px;
         }
-        QFrame {
-            background-color: transparent;
+        QLabel {
+            font-size: 12pt;
+            font-weight: normal;
         }
     """)
+    from PyQt5.QtCore import Qt
     window = ComicCrawlerGUI()
     window.show()
     sys.exit(app.exec_())
