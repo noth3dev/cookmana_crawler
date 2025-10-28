@@ -207,21 +207,10 @@ def crawl_comic_images():
         sanitized_comic_title = sanitize_path_component(comic_title)
         base_dir_name = f"{sanitized_comic_title} by {sanitized_author}" if sanitized_author != "Unknown" else sanitized_comic_title
         base_dir = base_dir_name
+        if os.path.exists(base_dir):
+            shutil.rmtree(base_dir, ignore_errors=True)
         os.makedirs(base_dir, exist_ok=True)
-        existing_dirs = [d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))]
-        episode_map = {info['sanitized_episode']: info for info in episode_info_list}
-        episode_names = set(episode_map.keys())
-        existing_in_episode = [d for d in existing_dirs if d in episode_names]
-        existing_in_episode.sort(key=lambda name: episode_sort_key(episode_map[name]['episode_num']))
-        if existing_in_episode:
-            delete_count = min(3, len(existing_in_episode))
-            for dir_name in existing_in_episode[-delete_count:]:
-                shutil.rmtree(os.path.join(base_dir, dir_name), ignore_errors=True)
-        processed_dirs = {d for d in os.listdir(base_dir) if os.path.isdir(os.path.join(base_dir, d))}
-        episode_info_list = [info for info in episode_info_list if info['sanitized_episode'] not in processed_dirs]
-        if not episode_info_list:
-            print("처리할 에피소드가 없습니다.")
-            continue
+        processed_dirs = set()
         
         def process_episode(info):
             driver = create_driver()
@@ -298,7 +287,14 @@ def crawl_comic_images():
                 for future in futures:
                     future.result()
         
-        print(f"\n모든 작업 완료! 저장 위치: {os.path.abspath(base_dir)}")
+        base_dir_path = os.path.abspath(base_dir)
+        zip_base = os.path.join(os.path.dirname(base_dir_path), os.path.basename(base_dir_path))
+        zip_target = f"{zip_base}.zip"
+        if os.path.exists(zip_target):
+            os.remove(zip_target)
+        shutil.make_archive(zip_base, 'zip', os.path.dirname(base_dir_path), os.path.basename(base_dir_path))
+        shutil.rmtree(base_dir_path, ignore_errors=True)
+        print(f"\n모든 작업 완료! ZIP 저장 위치: {zip_target}")
 
 if __name__ == "__main__":
     crawl_comic_images()
